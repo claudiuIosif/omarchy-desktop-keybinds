@@ -1,0 +1,118 @@
+// Desktop Keybinds — your shortcuts, as the desktop card shows them.
+//
+// This is the example config. The card reads it until you make your own copy
+// (click "Edit" on the card, or: cp this file to shortcuts.jsonc next to it).
+//
+// The easiest way to fill it in is to hand this file to an AI agent and tell it
+// which apps you use. Everything it needs is documented below; you do not have
+// to know the launcher commands by heart.
+//
+//   Card key   The keys you press. Purely a label — the card does not bind
+//              them. Keep them in sync with ~/.config/hypr/bindings.lua, or
+//              the card will advertise shortcuts you do not have.
+//   label      What to call the app on the card.
+//   type       How to start it. One of:
+//                "app"     an installed app         → target
+//                "webapp"  a site in your browser   → url
+//                "tui"     a terminal program       → command
+//                "command" any argv you like       → command
+//   target     App name for "app" (what the window title will contain), or the
+//              window pattern for "webapp". Defaults to label for webapps.
+//   url        Site to open, for "webapp".
+//   command    For "app": the launch command, when it differs from target
+//              (flatpaks, `uwsm-app -- ...`). For "tui" and "command": the
+//              program, as an argv array or one whitespace-separated string.
+//
+// Two things work anywhere in a command:
+//   {plugin}   expands to this plugin's own folder, so a row can call the
+//              workspace-cycle script this plugin ships.
+//   In "command" rows, plain hyprctl dispatchers work too — that is how the
+//              "Empty workspace" row below jumps to a clean workspace.
+//
+// Layout keys, all optional:
+//   columns    1–6, default 2.
+//   rowWidth   160–460 px, default 248.
+//   position   "top-left" | "top-right" | "bottom-left" | "bottom-right"
+
+{
+  "columns": 2,
+  "rowWidth": 248,
+  "position": "top-left",
+
+  "shortcuts": [
+    {
+      "key": "SUPER+RETURN",
+      "label": "Terminal",
+      "type": "app",
+      "target": "foot"
+    },
+    {
+      "key": "SUPER+TAB",
+      "label": "Cycle workspaces",
+      "type": "command",
+      "command": ["{plugin}/bin/desktop-keybinds-workspace-cycle"]
+    },
+    {
+      "key": "SUPER+1",
+      "label": "Empty workspace",
+      "type": "command",
+      "command": ["hyprctl", "dispatch", "hl.dsp.focus({ workspace = \"empty\" })"]
+    },
+    {
+      "key": "SUPER+SHIFT+B",
+      "label": "Browser",
+      "type": "app",
+      "target": "brave",
+      "command": "brave-origin"
+    },
+    {
+      "key": "SUPER+SHIFT+Y",
+      "label": "YouTube",
+      "type": "webapp",
+      "url": "https://youtube.com/"
+    },
+    {
+      "key": "SUPER+SHIFT+W",
+      "label": "WhatsApp",
+      "type": "webapp",
+      "url": "https://web.whatsapp.com/"
+    },
+    {
+      "key": "SUPER+SHIFT+E",
+      "label": "Gmail",
+      "type": "webapp",
+      "url": "https://mail.google.com/"
+    },
+    {
+      "key": "SUPER+SHIFT+N",
+      "label": "Omawrite",
+      "type": "app",
+      "target": "omawrite"
+    },
+    {
+      "key": "SUPER+SHIFT+C",
+      "label": "Music TUI",
+      "type": "tui",
+      "command": "cliamp"
+    },
+    {
+      "key": "SUPER+SHIFT+S",
+      "label": "Stremio",
+      "type": "app",
+      "target": "stremio",
+      "command": "flatpak run com.stremio.Stremio"
+    },
+    {
+      "key": "SUPER+SHIFT+M",
+      "label": "Google Maps",
+      "type": "webapp",
+      "url": "https://maps.google.com/"
+    },
+    {
+      "key": "SUPER+SHIFT+K",
+      "label": "Google Contacts",
+      "type": "webapp",
+      "url": "https://contacts.google.com/"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+# Your own shortcut list. It is yours, not the plugin author's, and
+# `omarchy plugin update` must never be able to overwrite it.
+shortcuts.jsonc
+shortcuts.json
+
+# Editor and OS droppings
+*~
+*.swp
+.DS_Store

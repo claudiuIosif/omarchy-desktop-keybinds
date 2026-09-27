@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.claudiuiosif.desktop-keybinds",
+  "name": "Desktop Keybinds",
+  "version": "1.0.0",
+  "author": "claudiuIosif",
+  "license": "MIT",
+  "description": "A cheat-sheet of your own app shortcuts, pinned to the desktop behind every window. Click a row to launch or focus that app. Configure it with an AI agent.",
+  "homepage": "https://github.com/claudiuIosif/omarchy-desktop-keybinds",
+  "repository": "https://github.com/claudiuIosif/omarchy-desktop-keybinds",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "KeybindsPanel.qml"
+  }
+}

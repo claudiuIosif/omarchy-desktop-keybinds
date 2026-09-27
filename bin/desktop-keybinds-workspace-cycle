@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#
+# Cycle through the workspaces that have windows, then land on a clean one.
+#
+# The point over a plain workspace switcher is that it never dead-ends on an
+# empty screen: pressing it while every workspace is empty still moves you to
+# workspace 1, and pressing it while you sit on the clean workspace jumps back
+# to the first one with something on it.
+#
+# Bind it from ~/.config/hypr/bindings.lua:
+#
+#   hl.unbind("SUPER + TAB")
+#   o.bind("SUPER + TAB", "Cycle workspaces to empty", "{plugin}/bin/omarchy-workspace-cycle")
+#
+# (substitute the plugin folder for {plugin}, or click the "Cycle workspaces"
+# row on the desktop card to run it without any keybinding at all)
+
+set -euo pipefail
+
+# Workspaces that hold at least one window, lowest id first. `hyprctl` on
+# PATH may be a shim that translates the legacy dispatch syntax, so the
+# dispatch below is written in the current Lua form either way.
+mapfile -t occupied < <(
+  hyprctl workspaces -j |
+    jq -r '[.[] | select(.id > 0 and (.windows | length) > 0)] | sort_by(.id)[] | .id'
+)
+
+active=$(hyprctl activeworkspace -j | jq -r '.id')
+
+# The lowest id that has no windows: 1 when nothing is occupied at all.
+highest=0
+for id in "${occupied[@]:-}"; do
+  [[ "$id" =~ ^[0-9]+$ ]] || continue
+  (( id > highest )) && highest=$id
+done
+
+clean=""
+for (( i = 1; i <= highest + 1; i++ )); do
+  if ! printf '%s\n' "${occupied[@]:-}" | grep -qx "$i"; then
+    clean="$i"
+    break
+  fi
+done
+[[ -n "$clean" ]] || clean=$(( highest + 1 ))
+
+# Nothing is occupied anywhere: the clean workspace is also the only choice.
+if (( ${#occupied[@]} == 0 )); then
+  target="$clean"
+elif [[ "$active" == "$clean" ]]; then
+  # Already parked on the clean one, so re-entering the cycle means going back
+  # to the first workspace with windows rather than nowhere.
+  target="${occupied[0]}"
+else
+  target="${occupied[0]}"
+  for i in "${!occupied[@]}"; do
+    if [[ "${occupied[$i]}" == "$active" ]]; then
+      next="${occupied[$((i + 1))]:-}"
+      # Past the last occupied workspace there is nothing left to cycle to, so
+      # exit the cycle on the clean one instead of wrapping around.
+      [[ -n "$next" ]] && target="$next" || target="$clean"
+      break
+    fi
+  done
+fi
+
+hyprctl dispatch "hl.dsp.focus({ workspace = \"$target\" })" >/dev/null

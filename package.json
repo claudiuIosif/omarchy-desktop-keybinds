@@ -1,0 +1,10 @@
+{
+  "name": "omarchy-desktop-keybinds",
+  "version": "1.0.0",
+  "description": "Omarchy shell plugin: a desktop cheat-sheet of your own app shortcuts.",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/keybinds.test.mjs && ./tests/workspace-cycle.test.sh && ./tests/lint.sh"
+  }
+}
