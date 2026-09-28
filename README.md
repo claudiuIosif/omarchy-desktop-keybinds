@@ -46,9 +46,12 @@ cp ~/.config/omarchy/plugins/io.github.claudiuiosif.desktop-keybinds/shortcuts.e
    ~/.config/omarchy/plugins/io.github.claudiuiosif.desktop-keybinds/shortcuts.jsonc
 ```
 
-Or just click **Edit** on the card — it copies the example into place and opens
-it in `$EDITOR`, falling back to the first of `nvim`, `vim`, `micro`, `nano`,
-`hx`, `code` or `gedit` it finds. The card reloads the moment you save.
+Or just click **Edit** on the card — it copies the example into place if you do
+not have a copy yet, then hands the file to `omarchy-launch-config-editor`. That
+is the same path `git` and `sudo` use, so the editor is whatever
+`omarchy-default-editor` says it is, and the card reloads the moment you save.
+If you have no editor installed at all, the button copies the config path to
+your clipboard instead of failing quietly.
 
 Paste this to whichever agent you use:
 
