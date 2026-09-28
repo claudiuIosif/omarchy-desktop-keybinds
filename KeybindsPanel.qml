@@ -47,8 +47,15 @@ Item {
     root.pluginDir
   )
 
-  // Transient message from an Edit attempt; the next config read clears it.
+  // Transient message from an Edit attempt, so the click is acknowledged even
+  // when it has to hand the file to something that takes a moment to appear.
   property string notice: ""
+
+  Timer {
+    id: noticeTimer
+    interval: 5000
+    onTriggered: root.notice = ""
+  }
 
   FileView {
     id: userConfig
@@ -59,7 +66,6 @@ Item {
     onLoaded: {
       root.userConfigText = text()
       root.haveUserConfig = true
-      root.notice = ""
     }
     onLoadFailed: {
       root.userConfigText = ""
@@ -87,69 +93,88 @@ Item {
   // The first click on Edit has nothing to open yet, so the shipped example is
   // copied into place first. `cp -n` leaves an existing file alone, which keeps
   // the button idempotent.
-  readonly property var editorCandidates: ["nvim", "vim", "micro", "nano", "hx", "code", "gedit"]
-  property int editorIndex: 0
+  //
+  // Which editor opens the file is left to Omarchy instead of being guessed here.
+  // `omarchy-launch-config-editor` resolves the default editor the same way git
+  // and sudo do, notices whether that editor is a terminal program or a GUI one,
+  // and toasts so the click is visibly acknowledged. Guessing meant a hardcoded
+  // list of editor binaries that ignored omarchy-default-editor entirely, and it
+  // dropped the flags off $EDITOR (on this machine "omarchy-launch-editor
+  // --inline"), so it launched something different from what the user asked for.
+  //
+  // The launch is backgrounded rather than exec'd, so the exit code describes the
+  // dispatch and nothing else. Exec'ing would make this report whatever the
+  // editor happened to exit with, so a user closing nvim with :cq would be told
+  // the editor could not be launched, and the process would sit there for as long
+  // as the editor was open. The Omarchy launchers setsid themselves, so the
+  // terminal outlives this process either way.
+  readonly property string editDispatch: [
+    'if command -v omarchy-launch-config-editor >/dev/null 2>&1; then',
+    '  omarchy-launch-config-editor "$1" >/dev/null 2>&1 &',
+    '  exit 0',
+    'fi',
+    'if command -v omarchy-launch-or-focus-tui >/dev/null 2>&1; then',
+    // Deliberately unquoted: $EDITOR is a command line, and word splitting is
+    // how its flags reach the editor.
+    '  omarchy-launch-or-focus-tui ${EDITOR:-vi} "$1" >/dev/null 2>&1 &',
+    '  exit 0',
+    'fi',
+    'if command -v wl-copy >/dev/null 2>&1; then',
+    '  wl-copy "$1"',
+    '  exit 42',
+    'fi',
+    'exit 1'
+  ].join("\n")
 
   function editConfig() {
+    notice = "Opening your editor…"
+    noticeTimer.restart()
     seedConfig.command = ["cp", "-n", root.exampleConfigPath, root.userConfigPath]
-    seedConfig.running = false
-    seedConfig.running = true
+    run(seedConfig)
   }
 
   function openEditor() {
-    var fromEnv = Quickshell.env("EDITOR")
-    if (fromEnv) {
-      launchEditor(fromEnv.split(/\s+/)[0])
-      return
-    }
-    editorIndex = 0
-    probeEditor()
+    launchEditor.command = ["sh", "-c", root.editDispatch, "desktop-keybinds", root.userConfigPath]
+    run(launchEditor)
   }
 
-  function probeEditor() {
-    if (editorIndex >= editorCandidates.length) {
-      // No editor to hand the file to, so put the path on the clipboard instead
-      // and let the user get there from there.
-      notice = "No editor found — config path copied"
-      clipboardPath.command = ["wl-copy", root.userConfigPath]
-      clipboardPath.running = false
-      clipboardPath.running = true
-      return
-    }
-    probeEditorProc.command = ["which", editorCandidates[editorIndex]]
-    probeEditorProc.running = false
-    probeEditorProc.running = true
-  }
-
-  function launchEditor(editor) {
-    editTerminal.command = ["omarchy-launch-or-focus-tui", editor, root.userConfigPath]
-    editTerminal.running = false
-    editTerminal.running = true
+  // `running` is a latch: assigning true while a process is still shutting down is
+  // ignored, so a second click in the same tick would be dropped. The start is
+  // deferred a turn to let the stop land first. A process that is still busy is
+  // left alone instead of restarted, since a repeat click must not kill a job
+  // that is only still around because it has something left to do.
+  function run(proc) {
+    if (proc.running) return
+    proc.running = false
+    Qt.callLater(function () { proc.running = true })
   }
 
   Process {
     id: seedConfig
-    onExited: if (exitCode === 0) root.openEditor()
-  }
-
-  Process {
-    id: probeEditorProc
-    onExited: {
+    // Signal parameters must be declared: reading exitCode by injection alone is
+    // deprecated and silently undefined on current Qt, which left the whole chain
+    // stopping after the copy.
+    onExited: (exitCode) => {
       if (exitCode === 0) {
-        root.launchEditor(root.editorCandidates[root.editorIndex])
-        return
+        root.openEditor()
+      } else {
+        root.notice = "Could not copy the example config"
+        noticeTimer.restart()
       }
-      root.editorIndex++
-      root.probeEditor()
     }
   }
 
   Process {
-    id: editTerminal
-  }
-
-  Process {
-    id: clipboardPath
+    id: launchEditor
+    onExited: (exitCode) => {
+      if (exitCode === 42) {
+        root.notice = "No editor found — config path copied"
+        noticeTimer.restart()
+      } else if (exitCode !== 0) {
+        root.notice = "Could not launch an editor"
+        noticeTimer.restart()
+      }
+    }
   }
 
   // ---- geometry ----------------------------------------------------------
@@ -320,16 +345,24 @@ Item {
     width: rowWidth
     height: 26
 
+    // Re-runnable: two clicks in quick succession both land, which is what the
+    // deferred start in root.run() buys. A click while the previous launch is
+    // still up is ignored rather than treated as a kill, so a long-lived target
+    // survives being clicked twice.
+    property bool running: false
+
     Process {
       id: launchProc
       command: srow.shortcutLaunch
-      running: false
+      running: srow.running
+      onExited: (exitCode) => { srow.running = false }
     }
 
     function run() {
       if (!srow.shortcutLaunch || srow.shortcutLaunch.length === 0) return
-      launchProc.running = false
-      launchProc.running = true
+      if (srow.running) return
+      srow.running = false
+      Qt.callLater(function () { srow.running = true })
     }
 
     Rectangle {
