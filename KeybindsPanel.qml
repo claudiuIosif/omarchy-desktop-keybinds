@@ -21,6 +21,10 @@ Item {
   id: root
 
   // ---- host injections --------------------------------------------------
+
+  // `shell` is only injected into an item that declares it, and it is how the
+  // card's position is written back to shell.json.
+  property var shell: null
   property var manifest: null
 
   // ---- config ------------------------------------------------------------
@@ -177,6 +181,100 @@ Item {
     }
   }
 
+  // ---- position ----------------------------------------------------------
+  // `position` in shortcuts.jsonc names a corner, which is all a hand-edited
+  // config can reasonably express. A dragged card needs a free x/y and has to
+  // come back in the same place next session, so that pair is saved in the
+  // plugin's own shell.json entry — where the bar keeps a dragged widget's
+  // position — and read back through a file watch, because the host API has no
+  // entry lookup for a plugin that owns no bar button.
+  FileView {
+    id: shellConfigFile
+    path: root.home + "/.config/omarchy/shell.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.loadSavedPosition()
+    onFileChanged: root.loadSavedPosition()
+  }
+
+  // Free position in logical px from the screen's top-left, or NaN while the
+  // corner from shortcuts.jsonc is still in charge.
+  property real posX: NaN
+  property real posY: NaN
+  property bool dragging: false
+  readonly property bool hasFreePosition: isFinite(posX) && isFinite(posY)
+
+  function ownEntryIn(cfg) {
+    if (!Util.isPlainObject(cfg)) return null
+    var id = String(root.pluginId || "")
+    if (id === "") return null
+    if (Array.isArray(cfg.plugins)) {
+      for (var j = 0; j < cfg.plugins.length; j++) {
+        if (cfg.plugins[j] && String(cfg.plugins[j].id) === id) return cfg.plugins[j]
+      }
+    }
+    return null
+  }
+
+  // Saving writes this very file, so the watch above fires right behind the
+  // write. Re-reading mid-drag would yank the card out from under the cursor.
+  function loadSavedPosition() {
+    if (root.dragging) return
+    var raw = shellConfigFile.text()
+    if (!raw) return
+    var parsed = null
+    try { parsed = JSON.parse(raw) } catch (e) { return }
+    var entry = root.ownEntryIn(parsed)
+    if (!entry) return
+    var x = Number(entry.cardX)
+    var y = Number(entry.cardY)
+    if (!isFinite(x) || !isFinite(y)) return
+    root.posX = x
+    root.posY = y
+  }
+
+  // updateEntryInline replaces the entry instead of merging into it, so the
+  // keys already there are read back and passed along rather than dropped.
+  function entryForWrite() {
+    var merged = { id: root.pluginId }
+    var raw = shellConfigFile.text()
+    if (raw) {
+      try {
+        var entry = root.ownEntryIn(JSON.parse(raw))
+        for (var k in entry) merged[k] = entry[k]
+      } catch (e) { }
+    }
+    return merged
+  }
+
+  function persistPosition() {
+    if (!shell || typeof shell.updateEntryInline !== "function") return
+    var next = root.entryForWrite()
+    next.cardX = Math.round(root.posX)
+    next.cardY = Math.round(root.posY)
+    shell.updateEntryInline(root.pluginId, next)
+  }
+
+  // Back to the configured corner. The saved pair is dropped rather than
+  // written as a sentinel, because leaving the keys out is what clears them.
+  function resetPosition() {
+    posX = NaN
+    posY = NaN
+    if (!shell || typeof shell.updateEntryInline !== "function") return
+    var next = root.entryForWrite()
+    delete next.cardX
+    delete next.cardY
+    shell.updateEntryInline(root.pluginId, next)
+  }
+
+  function debugStatus() {
+    return "free=" + root.hasFreePosition + " pos=" + root.posX + "," + root.posY
+      + " card=" + Math.round(card.x) + "," + Math.round(card.y)
+      + " corner=" + root.config.position
+      + " screen=" + window.width + "x" + window.height
+      + " size=" + Math.round(card.width) + "x" + Math.round(card.height)
+  }
+
   // ---- geometry ----------------------------------------------------------
   readonly property bool anchorLeft: config.position === "top-left" || config.position === "bottom-left"
   readonly property bool anchorBottom: config.position === "bottom-left" || config.position === "bottom-right"
@@ -185,6 +283,12 @@ Item {
   readonly property int topMargin: Style.bar.sizeHorizontal + Style.gapsOut
   readonly property int contentWidth: config.rowWidth * config.columns
     + Style.spacing.panelGap * Math.max(0, config.columns - 1)
+
+  // A position saved on another screen, or under a different scale, would
+  // otherwise leave the card off the edge with no way to drag it back, so the
+  // free position is always pulled into view.
+  function clampX(v) { return Math.max(0, Math.min(v, window.width - card.width)) }
+  function clampY(v) { return Math.max(0, Math.min(v, window.height - card.height)) }
 
   // ---- window -------------------------------------------------------------
   PanelWindow {
@@ -215,8 +319,59 @@ Item {
 
       // The panel window fills the screen, so the corner is a plain position
       // rather than a set of anchors that would have to be unset conditionally.
-      x: root.anchorLeft ? Style.gapsOut : parent.width - width - Style.gapsOut
-      y: root.anchorBottom ? parent.height - height - Style.gapsOut : root.topMargin
+      // A dragged card takes over from the corner until it is reset.
+      x: root.hasFreePosition ? root.clampX(root.posX)
+        : (root.anchorLeft ? Style.gapsOut : parent.width - width - Style.gapsOut)
+      y: root.hasFreePosition ? root.clampY(root.posY)
+        : (root.anchorBottom ? parent.height - height - Style.gapsOut : root.topMargin)
+
+      // ---- dragging
+      // Declared before the header and the rows so they keep priority: a click
+      // on a row still launches its app, a click on Edit still opens the
+      // editor, and a drag from anywhere else moves the card. The panel window
+      // fills the screen and never moves, so global pointer deltas stay stable
+      // while the card travels and it stays under the cursor.
+      MouseArea {
+        id: dragArea
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        cursorShape: Qt.SizeAllCursor
+        property real grabX: 0
+        property real grabY: 0
+        property real startX: 0
+        property real startY: 0
+        property bool moved: false
+
+        onPressed: function(mouse) {
+          var g = dragArea.mapToGlobal(mouse.x, mouse.y)
+          grabX = g.x
+          grabY = g.y
+          startX = card.x
+          startY = card.y
+          moved = false
+          root.dragging = true
+        }
+        onPositionChanged: function(mouse) {
+          if (!pressed) return
+          var g = dragArea.mapToGlobal(mouse.x, mouse.y)
+          if (!moved) {
+            // A few px of slop, so an ordinary click on the card is not a drag
+            // that rewrites the saved position.
+            if (Math.abs(g.x - grabX) < 3 && Math.abs(g.y - grabY) < 3) return
+            moved = true
+          }
+          root.posX = startX + (g.x - grabX)
+          root.posY = startY + (g.y - grabY)
+        }
+        onReleased: {
+          root.dragging = false
+          if (moved) root.persistPosition()
+        }
+        onCanceled: root.dragging = false
+        // Back to the corner from shortcuts.jsonc, for a card that ended up
+        // somewhere awkward.
+        onDoubleClicked: root.resetPosition()
+      }
 
       // ---- header
       Item {
