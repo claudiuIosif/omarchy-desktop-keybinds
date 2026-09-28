@@ -34,6 +34,21 @@ omarchy plugin update io.github.claudiuiosif.desktop-keybinds
 
 Your own config is never touched by an update.
 
+## Requirements
+
+Omarchy Quattro, and nothing else to install. The panel itself is pure QML and
+reads no system state beyond `$HOME`. The external commands it may call, all of
+which Omarchy already ships:
+
+| Command | Used for | If missing |
+| --- | --- | --- |
+| `omarchy-launch-config-editor` | the **Edit** button | falls back to `omarchy-launch-or-focus-tui` with `$EDITOR`, then to putting the config path on the clipboard |
+| `hyprctl` | the workspace-cycle script | that one row stops working; the rest of the card is unaffected |
+| `jq` | the workspace-cycle script, to read `hyprctl -j` | same |
+| `wl-copy` | only the no-editor-installed clipboard fallback | only that fallback is lost |
+
+There are no network calls, no build step, and no dependencies to compile.
+
 ## Configure it with an AI agent
 
 The config is one JSONC file — comments allowed, trailing commas allowed — and
