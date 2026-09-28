@@ -186,15 +186,18 @@ Item {
   // config can reasonably express. A dragged card needs a free x/y and has to
   // come back in the same place next session, so that pair is saved in the
   // plugin's own shell.json entry — where the bar keeps a dragged widget's
-  // position — and read back through a file watch, because the host API has no
-  // entry lookup for a plugin that owns no bar button.
+  // position. The host API has no entry lookup for a plugin that owns no bar
+  // button, so the file is read directly, once: saving the position rewrites
+  // shell.json, and the file view can still be holding the previous contents
+  // when that write comes back around, which would restore the position from
+  // before the drag. A corner position is not affected, since it comes from
+  // shortcuts.jsonc and is re-read on every change.
   FileView {
     id: shellConfigFile
     path: root.home + "/.config/omarchy/shell.json"
     watchChanges: true
     printErrors: false
     onLoaded: root.loadSavedPosition()
-    onFileChanged: root.loadSavedPosition()
   }
 
   // Free position in logical px from the screen's top-left, or NaN while the
