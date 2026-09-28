@@ -229,8 +229,10 @@ Item {
     var x = Number(entry.cardX)
     var y = Number(entry.cardY)
     if (!isFinite(x) || !isFinite(y)) return
-    root.posX = x
-    root.posY = y
+    // A position saved by an earlier version could sit off-screen; clamping it
+    // on load also means the next drag rewrites it as something sane.
+    root.posX = root.clampX(x)
+    root.posY = root.clampY(y)
   }
 
   // updateEntryInline replaces the entry instead of merging into it, so the
@@ -360,8 +362,11 @@ Item {
             if (Math.abs(g.x - grabX) < 3 && Math.abs(g.y - grabY) < 3) return
             moved = true
           }
-          root.posX = startX + (g.x - grabX)
-          root.posY = startY + (g.y - grabY)
+          // Clamped here, not just where it is bound, so posX always equals
+          // where the card is actually drawn. Otherwise a drag past an edge
+          // stores an off-screen position that the next drag jumps away from.
+          root.posX = root.clampX(startX + (g.x - grabX))
+          root.posY = root.clampY(startY + (g.y - grabY))
         }
         onReleased: {
           root.dragging = false
