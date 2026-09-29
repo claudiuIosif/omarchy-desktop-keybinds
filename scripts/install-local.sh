@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Syncs the working repo into the installed plugin folder, then asks the shell
-# to reload it. The plugin validator rejects symlinks inside a plugin folder, so
-# this copies for real.
 set -euo pipefail
 
 SRC="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -13,13 +10,20 @@ actual_id=$(jq -r '.id' "$SRC/manifest.json")
 [[ "$actual_id" == "$ID" ]] || { echo "manifest id is '$actual_id', expected '$ID'" >&2; exit 1; }
 
 mkdir -p "$DEST"
-# --delete keeps a renamed file from lingering; shortcuts.jsonc is gitignored
-# and is never in the source tree, so it is preserved by the exclusion.
-rsync -a --delete \
+rsync -a \
   --exclude '.git/' \
   --exclude 'shortcuts.jsonc' \
   --exclude 'shortcuts.json' \
   --exclude 'node_modules/' \
+  --exclude '*.bak' \
+  --exclude '*.orig' \
+  --exclude '*.backup' \
+  --exclude '*.swp' \
+  --exclude '*.swo' \
+  --exclude '.DS_Store' \
+  --exclude 'README.md' \
+  --exclude '.user-*' \
+  --exclude '.local-*' \
   "$SRC/" "$DEST/"
 
 omarchy plugin validate "$DEST"
